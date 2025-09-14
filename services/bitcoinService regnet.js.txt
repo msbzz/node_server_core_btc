@@ -1,0 +1,24 @@
+const { makeRpcClient, readCookieAuth, USE_USERPASS, WALLET } = require('../config/core');
+let rpc = makeRpcClient(WALLET);
+
+async function call(method, params = []) {
+  try {
+    const { data } = await rpc.post('', { jsonrpc: '1.0', id: 'x', method, params });
+    if (data.error) throw new Error(data.error.message || 'RPC error');
+    return data.result;
+  } catch (err) {
+    if (!USE_USERPASS && err?.response?.status === 401) {
+      rpc = makeRpcClient(WALLET);
+    }
+    throw err;
+  }
+}
+
+async function callWallet(wallet, method, params = []) {
+  const client = makeRpcClient(wallet);
+  const { data } = await client.post('', { jsonrpc: '1.0', id: 'x', method, params });
+  if (data.error) throw new Error(data.error.message || 'RPC error');
+  return data.result;
+}
+
+module.exports = { call, callWallet };

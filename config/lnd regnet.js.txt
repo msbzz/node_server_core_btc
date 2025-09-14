@@ -1,0 +1,35 @@
+const fs = require('fs');
+const axios = require('axios');
+const https = require('https');
+
+const LND_REST_URL      = process.env.LND_REST_URL;
+const LND_TLS_CERT_PATH = process.env.LND_TLS_CERT_PATH;
+const LND_MACAROON_PATH = process.env.LND_MACAROON_PATH;
+
+let lnd = null;
+let LND_ON = false;
+
+try {
+  if (
+    LND_REST_URL &&
+    LND_TLS_CERT_PATH && fs.existsSync(LND_TLS_CERT_PATH) &&
+    LND_MACAROON_PATH && fs.existsSync(LND_MACAROON_PATH)
+  ) {
+    const tlsCert = fs.readFileSync(LND_TLS_CERT_PATH);
+    const httpsAgent = new https.Agent({ ca: tlsCert, rejectUnauthorized: true });
+    const macaroonHex = fs.readFileSync(LND_MACAROON_PATH).toString('hex');
+
+    lnd = axios.create({
+      baseURL: LND_REST_URL,
+      httpsAgent,
+      headers: { 'Grpc-Metadata-macaroon': macaroonHex, 'Content-Type': 'application/json' },
+      timeout: 10000,
+    });
+
+    LND_ON = true;
+  }
+} catch {
+  LND_ON = false;
+}
+
+module.exports = { lnd, LND_ON };

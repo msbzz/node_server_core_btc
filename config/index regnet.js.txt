@@ -1,0 +1,14 @@
+const path = require('path');
+
+const DATADIR = process.env.DATADIR || 'D:/estudo/estudo-blockchain/testes/session2';
+const WALLET  = process.env.WALLET  || 'w2';
+const PORT    = Number(process.env.PORT || 3000);
+const DEV     = process.env.DEV === '1';
+
+module.exports = {
+  DATADIR,
+  WALLET,
+  PORT,
+  DEV,
+  path,
+};

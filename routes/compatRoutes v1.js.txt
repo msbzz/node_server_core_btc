@@ -1,0 +1,59 @@
+// routes/compatRoutes.js
+// Rotas de compatibilidade para manter requests antigos funcionando
+// Sem alterar as rotas atuais do projeto.
+
+const express = require('express');
+const router = express.Router();
+
+// Se no seu projeto o caminho/nomes forem diferentes, ajuste as imports abaixo
+// makeRpcClient precisa devolver um client RPC do Bitcoin Core já autenticado
+const { makeRpcClient } = require('../services/bitcoinService');
+
+// Helper simples para evitar try/catch repetido
+const asyncHandler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
+/**
+ * POST /api/wallets/balance
+ * Body JSON: { "name": "loja_wallet" }
+ * OBS: Seu código oficial usa GET /api/wallet/:name/balance (sem body).
+ * Esta rota é apenas um ALIAS para compatibilidade com sua coleção antiga do Insomnia.
+ */
+router.post(
+  '/wallets/balance',
+  asyncHandler(async (req, res) => {
+    const { name } = req.body || {};
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'param name é obrigatório' });
+    }
+
+    const rpc = makeRpcClient(name);
+
+    // mesmas chamadas que você já usa no projeto
+    const [confirmed, unconfirmed] = await Promise.all([
+      rpc.getbalance(),
+      rpc.getunconfirmedbalance(),
+    ]);
+
+    res.json({ confirmed, unconfirmed });
+  })
+);
+
+/**
+ * POST /api/newaddress
+ * Body JSON opcional: { "type": "bech32" }
+ * OBS: Seu código oficial expõe POST /api/dev/newaddress.
+ * Este endpoint é um ALIAS sem o "/dev" para manter compatibilidade.
+ */
+router.post(
+  '/newaddress',
+  asyncHandler(async (req, res) => {
+    const { type } = req.body || {};
+    const rpc = makeRpcClient(); // usa a default setada no serviço / env
+    // label opcional apenas pra identificar origem
+    const address = await rpc.getnewaddress('api-compat', type || 'bech32');
+    res.json({ address });
+  })
+);
+
+module.exports = router;

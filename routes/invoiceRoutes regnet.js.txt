@@ -1,0 +1,86 @@
+const express = require('express');
+const { call } = require('../services/bitcoinService');
+const { lnCreateInvoiceMsat, lnGetInvoice, LND_ON } = require('../services/lnService');
+const { invoices, bip21 } = require('../services/utils');
+
+const router = express.Router();
+
+/* ================================
+   Criar nova fatura
+   ================================ */
+router.post('/', async (req, res) => {
+  try {
+    const { amount, memo, mode } = req.body || {};
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({ error: 'amount inválido' });
+    }
+
+    const id = 'ord-' + Date.now();
+    const label = `order_${id}`;
+
+    const address = await call('getnewaddress', [label, 'bech32']);
+    const uriBase = bip21(address, amount, label, memo || '');
+
+    let bolt11 = null, r_hash = null;
+    const wantsLN = (mode === 'ln' || mode === 'hybrid');
+
+    if (wantsLN && LND_ON) {
+      const msat = Math.round(amount * 1e11);
+      const inv = await lnCreateInvoiceMsat(msat, memo || label, 900);
+      bolt11 = inv.payment_request || null;
+      r_hash  = inv.r_hash || null;
+    }
+
+    const bip21Uri = bolt11 ? `${uriBase}&lightning=${encodeURIComponent(bolt11)}` : uriBase;
+
+    invoices.set(id, { address, amount, label, createdAt: Date.now(), bolt11, r_hash });
+
+    res.json({ id, address, amount, bip21: bip21Uri, label, bolt11, r_hash });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ================================
+   Consultar status da fatura
+   ================================ */
+router.get('/:id', async (req, res) => {
+  try {
+    const inv = invoices.get(req.params.id);
+    if (!inv) return res.status(404).json({ error: 'invoice não encontrada' });
+
+    // Verifica saldo on-chain (0 e 1 confirmação)
+    const received0 = await call('getreceivedbyaddress', [inv.address, 0]);
+    const received1 = await call('getreceivedbyaddress', [inv.address, 1]);
+
+    // Se for LN, consulta o estado real da fatura
+    let lnInfo = null;
+    if (inv.r_hash && LND_ON) {
+      try {
+        const ln = await lnGetInvoice(inv.r_hash);
+        lnInfo = {
+          settled: ln.settled === true,
+          amt_paid_msat: Number(ln.amt_paid_msat || 0),
+          state: ln.state || (ln.settled ? 'SETTLED' : 'OPEN'),
+        };
+      } catch {
+        // ignora erros do LN
+      }
+    }
+
+    res.json({
+      id: req.params.id,
+      address: inv.address,
+      amount: inv.amount,
+      received0,
+      received1,
+      paid: received0 >= inv.amount,
+      confirmed: received1 >= inv.amount,
+      ln: lnInfo,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+module.exports = router;
