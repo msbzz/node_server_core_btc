@@ -171,3 +171,4 @@ Cole no navegador com o backend rodando:
 7.6. **Conferir saldos novamente**.
 
  
+[veja tambem o app loja btc](https://github.com/msbzz/loja_next_btc) 
